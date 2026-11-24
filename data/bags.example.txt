@@ -1,0 +1,182 @@
+# CleanUpLight Bag Layout — edit in any text editor, then run `//cul reload`
+#
+# Structure:
+#   [SATCHEL] / [SACK] / [CASE] / [WARDROBE1-8] / [SAFE] / [STORAGE] / [LOCKER]
+#       Items under a bag header are stowed automatically on `//cul go` and `//cul all`.
+#       Use `@name` headers inside a bag to organize chunks you can also call individually.
+#
+#   [KIT:name -> bag]
+#       Experimental summonable sets (e.g., `abby` for Abyssea weapons) and role-based sets.
+#       - Toggle with `//cul kit <name>` (any in Inventory -> put back away; none -> summon to Inventory).
+#       - Optional per-character roles (evaluated locally by each character on `//cul go`):
+#           hoard: Character1              (character-specific hoarding: stows into the kit's bag during `go`; also accepts `horde:`)
+#           dump:  Character2, Character3  (anti-hoarding — NEVER drops/deletes! Pulls out of storage into Inventory to trade; also supports `others`)
+#       - Kits without `hoard:`/`dump:` are skipped by `go`, toggled by `kit`, and stowed by `all`.
+#
+# Notes:
+#   - One item name per line (no quotes or commas needed).
+#   - Lines starting with `#` or `//` are comments.
+#   - Wildcards (`*` and `?`) are supported and expanded once at load for O(1) speed.
+#   - Wardrobe sections automatically filter to equippable items only.
+
+[SETTINGS]
+move_delay = 0.05
+stack_delay = 0.15
+job_settle_delay = 0.25
+quiet_empty = true
+
+[SATCHEL]
+@utility
+Warp Cudgel
+Treat Staff II
+Warp Ring
+Dim. Ring (Holla)
+Dim. Ring (Dem)
+Dim. Ring (Mea)
+Liv. Bul. Pouch
+Dev. Bul. Pouch
+Chr. Bul. Pouch
+Yoichi's Quiver
+
+@meds
+# Status & Debuff Cures
+Remedy
+Panacea
+Echo Drops
+Holy Water
+Antacid
+Antidote
+Eye Drops
+Smelling Salts
+Poison Potion
+# Sneak / Invis / Mobility
+Silent Oil
+Prism Powder
+Instant Warp
+Instant Retrace
+Hermes Quencher
+# Reraise & Emergency Recovery
+Reraiser
+Hi-Reraiser
+Super Reraiser
+Instant Reraise
+Elixir
+Hi-Elixir
+Vile Elixir
+Vile Elixir +1
+Icarus Wing
+Scapegoat
+# Misc Satchel Consumables
+Abdhaljs Seal
+
+@ninjatools
+Shihei
+Inoshishinofuda
+Shikanofuda
+Chonofuda
+Sanjaku-Tenugui
+Shinobi-Tabi
+
+[CASE]
+@sortie
+Octahedrite
+Hexahedrite
+Ra'Kaz. Sapphire
+Ra'Kaz. Starstone
+Mesosiderite
+Voracious Psyche
+
+@sheolc
+Sarama's Hide
+Shedu's Mane
+Tumult's Blood
+Sovereign's Hide
+Tolba's Shell
+Hidhaegg's Scale
+Thu'ban's Scale
+
+@omen
+# Tip: use `P. * Card` to match all Omen job cards
+P. PLD Card
+S. Astral Detritus
+
+@dnamis
+Rusted I. Card
+Black. I. Card
+Old I. Card
+M. Astral Detritus
+Heroism Crystal
+Heroism Aggregate
+
+@limbus
+Shard of Hope
+Shard of Trust
+Shard of Justice
+Shard of Bravery
+Shard of Mercy
+Alabaster Matter
+Murky Matter
+
+[KIT:abby -> sack]
+Irradiance Blade
+Iapetus
+Hoe
+Lady Bell
+Fermion Sword
+Blurred Knife +1
+Bloodrain Strap
+# Mercurial Pole
+
+[KIT:upgrade -> sack]
+# Example multi-box roles — replace with your character names (or comment out for manual/kit-only):
+# hoard: Character3
+# dump: Character1, Character2
+Beitetsu Box
+Beitetsu Parcel
+Beitetsu
+Boulder Case
+Boulder Box
+Riftborn Boulder
+Pluton Case
+Pluton Box
+Pluton
+Riftdross
+Riftcinder
+Heavy Metal
+
+[KIT:limbus_mats -> sack]
+# Example multi-box roles — replace with your character names (or use `dump: others`):
+# hoard: Character2
+# dump: Character1, Character3
+Tellurium Ingot
+Black Jadeite
+Vicuna Cloth
+Ash Wood
+Wh. Serp. Leather
+Wh. Drag. Scale
+Hydro Oil
+Ala. Part I
+Ala. Part II
+Ala. Part III
+Ala. Part IV
+Ala. Core
+Murky Part I
+Murky Part II
+Murky Part III
+Murky Part IV
+Murky Core
+
+[KIT:ambuscade -> sack]
+# Sellable Ambuscade rewards (excluding items already listed in `upgrade`)
+# hoard: Character3
+# dump: Character1, Character2
+Alexandrite
+H-P Bayld
+T. Whiteshell
+L. Jadeshell
+O. Bronzepiece
+M. Silverpiece
+1 Byne Bill
+100 Byne Bill
+Umbral Marrow
+Mulcibar's Scoria
