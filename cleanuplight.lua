@@ -19,7 +19,7 @@ Design principles:
 
 _addon.name = 'CleanUpLight'
 _addon.author = 'State-Null'
-_addon.version = '1.2.2'
+_addon.version = '1.2.3'
 _addon.commands = {'cleanuplight', 'cul', 'cleanup'}
 
 local res = require('resources')
@@ -70,6 +70,7 @@ local active_overlay = nil
 -- FIFO command queue (prevents races when multiple `send` commands arrive back-to-back)
 local job_queue = {}
 local worker_running = false
+local worker_heartbeat = 0
 
 local function msg_info(text)
     windower.add_to_chat(207, '[CleanUpLight] ' .. text)
@@ -876,12 +877,13 @@ local function process_queue()
     worker_running = true
     local settle_delay = settings.job_settle_delay or 0.25
 
+    -- Do NOT wrap execute_job in pcall: Lua 5.1 / Windower LuaCore cannot coroutine.sleep (yield) across a C-call boundary.
     while #job_queue > 0 do
+        worker_heartbeat = os.clock()
         local job = table.remove(job_queue, 1)
-        local ok, moved = pcall(execute_job, job)
-        if not ok then
-            msg_err('Error during ' .. tostring(job.label) .. ': ' .. tostring(moved))
-        elseif moved and moved > 0 and #job_queue > 0 and settle_delay > 0 then
+        local moved = execute_job(job)
+        worker_heartbeat = os.clock()
+        if moved and moved > 0 and #job_queue > 0 and settle_delay > 0 then
             coroutine.sleep(settle_delay)
         end
     end
@@ -891,7 +893,12 @@ end
 
 local function enqueue_job(job)
     job_queue[#job_queue + 1] = job
+    if worker_running and (os.clock() - worker_heartbeat) > 30 then
+        worker_running = false
+    end
     if not worker_running then
+        worker_running = true
+        worker_heartbeat = os.clock()
         coroutine.schedule(process_queue, 0)
     end
 end
