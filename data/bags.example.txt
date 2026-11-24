@@ -47,14 +47,15 @@ Holy Water
 Antacid
 Antidote
 Eye Drops
-Smelling Salts
 Poison Potion
+
 # Sneak / Invis / Mobility
 Silent Oil
 Prism Powder
 Instant Warp
 Instant Retrace
 Hermes Quencher
+
 # Reraise & Emergency Recovery
 Reraiser
 Hi-Reraiser
@@ -66,6 +67,7 @@ Vile Elixir
 Vile Elixir +1
 Icarus Wing
 Scapegoat
+
 # Misc Satchel Consumables
 Abdhaljs Seal
 
