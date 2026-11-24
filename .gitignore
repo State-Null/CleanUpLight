@@ -1,4 +1,5 @@
-data/bags.txt
+data/*.txt
+!data/bags.example.txt
 *.log
 *.tmp
 .DS_Store

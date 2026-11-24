@@ -19,7 +19,7 @@ Design principles:
 
 _addon.name = 'CleanUpLight'
 _addon.author = 'State-Null'
-_addon.version = '1.2.0'
+_addon.version = '1.2.1'
 _addon.commands = {'cleanuplight', 'cul', 'cleanup'}
 
 local res = require('resources')
@@ -64,6 +64,7 @@ local kits = {}
 local auto_map = {}
 local all_map = {}
 local bag_maps = {}
+local active_overlay = nil
 
 -- FIFO command queue (prevents races when multiple `send` commands arrive back-to-back)
 local job_queue = {}
@@ -242,11 +243,18 @@ local function resolve_item_ids(raw_name)
     return ids
 end
 
-local function register_chunk(store, order_list, kit_list, dup_warnings, raw_name, bag_id, is_kit, line_no)
+local function register_chunk(store, order_list, kit_list, dup_warnings, raw_name, bag_id, is_kit, line_no, file_label, is_overlay)
     local key = raw_name:lower()
     if store[key] then
-        dup_warnings[#dup_warnings + 1] = ('Line %d: duplicate chunk/kit name "%s" (rename one to avoid merging)'):format(line_no, raw_name)
-        return store[key]
+        local existing = store[key]
+        if is_overlay then
+            if bag_id then
+                existing.bag = bag_id
+            end
+        else
+            dup_warnings[#dup_warnings + 1] = ('%s line %d: duplicate chunk/kit name "%s" (rename one to avoid merging)'):format(file_label, line_no, raw_name)
+        end
+        return existing
     end
     local c = {
         name = raw_name,
@@ -284,39 +292,31 @@ local function bootstrap_bags_file(path)
     return true
 end
 
-local function load_layout()
-    local path = windower.addon_path .. 'data/bags.txt'
-    local f, err = io.open(path, 'r')
-    if not f then
-        if bootstrap_bags_file(path) then
-            f, err = io.open(path, 'r')
-        end
-    end
-    if not f then
-        msg_err('Failed to open data/bags.txt: ' .. tostring(err))
-        return false
-    end
-
-    local new_settings = {
-        move_delay = 0.05,
-        stack_delay = 0.15,
-        job_settle_delay = 0.25,
-        quiet_empty = true,
-    }
-    local new_chunks = {}
-    local new_order = {}
-    local new_kits = {}
-    local new_auto_map = {}
-    local new_all_map = {}
-    local new_bag_maps = {}
-
-    local unknown_items = {}
-    local warnings = {}
+local function parse_layout_file(f, file_label, is_overlay, state)
+    local new_settings = state.settings
+    local new_chunks = state.chunks
+    local new_order = state.order
+    local new_kits = state.kits
+    local new_auto_map = state.auto_map
+    local new_all_map = state.all_map
+    local new_bag_maps = state.bag_maps
+    local unknown_items = state.unknown_items
+    local warnings = state.warnings
 
     local mode = nil        -- 'settings' | 'bag' | 'kit'
     local cur_bag_id = nil
     local cur_chunk = nil
     local line_no = 0
+
+    local function assign_bag_item(item_id, bag_id)
+        local prev_bag = new_auto_map[item_id]
+        if prev_bag and prev_bag ~= bag_id and new_bag_maps[prev_bag] then
+            new_bag_maps[prev_bag][item_id] = nil
+        end
+        new_auto_map[item_id] = bag_id
+        new_all_map[item_id] = bag_id
+        new_bag_maps[bag_id][item_id] = bag_id
+    end
 
     for raw_line in f:lines() do
         line_no = line_no + 1
@@ -355,16 +355,16 @@ local function load_layout()
                     if arrow_bag and arrow_bag ~= '' then
                         dst_bag = resolve_bag(arrow_bag)
                         if not dst_bag or dst_bag == INVENTORY_BAG then
-                            warnings[#warnings + 1] = ('Line %d: invalid kit bag "%s"'):format(line_no, arrow_bag)
+                            warnings[#warnings + 1] = ('%s line %d: invalid kit bag "%s"'):format(file_label, line_no, arrow_bag)
                             dst_bag = nil
                         end
                     end
 
                     cur_bag_id = dst_bag
                     if kit_name ~= '' then
-                        cur_chunk = register_chunk(new_chunks, new_order, new_kits, warnings, kit_name, dst_bag, true, line_no)
+                        cur_chunk = register_chunk(new_chunks, new_order, new_kits, warnings, kit_name, dst_bag, true, line_no, file_label, is_overlay)
                     else
-                        warnings[#warnings + 1] = ('Line %d: empty kit name'):format(line_no)
+                        warnings[#warnings + 1] = ('%s line %d: empty kit name'):format(file_label, line_no)
                         cur_chunk = nil
                     end
 
@@ -378,7 +378,7 @@ local function load_layout()
                             new_bag_maps[bag_id] = {}
                         end
                     else
-                        warnings[#warnings + 1] = ('Line %d: unknown section "[%s]"'):format(line_no, header)
+                        warnings[#warnings + 1] = ('%s line %d: unknown section "[%s]"'):format(file_label, line_no, header)
                         mode = nil
                         cur_bag_id = nil
                         cur_chunk = nil
@@ -404,10 +404,10 @@ local function load_layout()
                 if mode == 'bag' and cur_bag_id then
                     local cname = trim(line:sub(2))
                     if cname ~= '' then
-                        cur_chunk = register_chunk(new_chunks, new_order, new_kits, warnings, cname, cur_bag_id, false, line_no)
+                        cur_chunk = register_chunk(new_chunks, new_order, new_kits, warnings, cname, cur_bag_id, false, line_no, file_label, is_overlay)
                     end
                 else
-                    warnings[#warnings + 1] = ('Line %d: "%s" must be inside a [BAG] section'):format(line_no, line)
+                    warnings[#warnings + 1] = ('%s line %d: "%s" must be inside a [BAG] section'):format(file_label, line_no, line)
                 end
 
             elseif mode == 'kit' and cur_chunk and line:match('^[%a_]+%s*:') then
@@ -429,7 +429,7 @@ local function load_layout()
                                 cur_chunk.id_set[item_id] = true
                                 cur_chunk.ordered_ids[#cur_chunk.ordered_ids + 1] = item_id
                             end
-                            if cur_bag_id and not new_all_map[item_id] then
+                            if cur_bag_id and (is_overlay or not new_all_map[item_id]) then
                                 new_all_map[item_id] = cur_bag_id
                             end
                         end
@@ -440,7 +440,7 @@ local function load_layout()
                 if mode == 'bag' and not cur_chunk and cur_bag_id then
                     local default_name = (res.bags[cur_bag_id] and res.bags[cur_bag_id].api) or ('bag' .. tostring(cur_bag_id))
                     cur_chunk = new_chunks[default_name:lower()]
-                        or register_chunk(new_chunks, new_order, new_kits, warnings, default_name, cur_bag_id, false, line_no)
+                        or register_chunk(new_chunks, new_order, new_kits, warnings, default_name, cur_bag_id, false, line_no, file_label, is_overlay)
                 end
 
                 if cur_chunk then
@@ -456,11 +456,9 @@ local function load_layout()
                             end
 
                             if mode == 'bag' and cur_bag_id then
-                                new_auto_map[item_id] = cur_bag_id
-                                new_all_map[item_id] = cur_bag_id
-                                new_bag_maps[cur_bag_id][item_id] = cur_bag_id
+                                assign_bag_item(item_id, cur_bag_id)
                             elseif mode == 'kit' and cur_bag_id then
-                                if not new_all_map[item_id] then
+                                if is_overlay or not new_all_map[item_id] then
                                     new_all_map[item_id] = cur_bag_id
                                 end
                             end
@@ -470,22 +468,80 @@ local function load_layout()
             end
         end
     end
+end
 
+local function find_character_overlay()
+    local p = windower.ffxi.get_player()
+    if not p or not p.name or p.name == '' then
+        return nil, nil
+    end
+    local candidates = {
+        'data/' .. p.name .. '.txt',
+        'data/' .. p.name .. '_bags.txt',
+    }
+    for _, rel in ipairs(candidates) do
+        local f = io.open(windower.addon_path .. rel, 'r')
+        if f then
+            return f, rel
+        end
+    end
+    return nil, nil
+end
+
+local function load_layout()
+    local path = windower.addon_path .. 'data/bags.txt'
+    local f, err = io.open(path, 'r')
+    if not f then
+        if bootstrap_bags_file(path) then
+            f, err = io.open(path, 'r')
+        end
+    end
+    if not f then
+        msg_err('Failed to open data/bags.txt: ' .. tostring(err))
+        return false
+    end
+
+    local state = {
+        settings = {
+            move_delay = 0.05,
+            stack_delay = 0.15,
+            job_settle_delay = 0.25,
+            quiet_empty = true,
+        },
+        chunks = {},
+        order = {},
+        kits = {},
+        auto_map = {},
+        all_map = {},
+        bag_maps = {},
+        unknown_items = {},
+        warnings = {},
+    }
+
+    parse_layout_file(f, 'data/bags.txt', false, state)
     f:close()
 
-    settings = new_settings
-    chunks = new_chunks
-    chunk_order = new_order
-    kits = new_kits
-    auto_map = new_auto_map
-    all_map = new_all_map
-    bag_maps = new_bag_maps
-
-    for _, w in ipairs(warnings) do
-        msg_warn('bags.txt: ' .. w)
+    -- Optional per-character overlay (`data/<CharName>.txt` or `data/<CharName>_bags.txt`)
+    local overlay_f, overlay_rel = find_character_overlay()
+    if overlay_f then
+        parse_layout_file(overlay_f, overlay_rel, true, state)
+        overlay_f:close()
     end
-    if #unknown_items > 0 then
-        msg_warn('Unknown item(s) in bags.txt: ' .. table.concat(unknown_items, ', '))
+
+    settings = state.settings
+    chunks = state.chunks
+    chunk_order = state.order
+    kits = state.kits
+    auto_map = state.auto_map
+    all_map = state.all_map
+    bag_maps = state.bag_maps
+    active_overlay = overlay_rel
+
+    for _, w in ipairs(state.warnings) do
+        msg_warn(w)
+    end
+    if #state.unknown_items > 0 then
+        msg_warn('Unknown item(s): ' .. table.concat(state.unknown_items, ', '))
     end
 
     return true
@@ -979,10 +1035,17 @@ local function show_list()
     if #kit_parts > 0 then
         msg_info('Kits (kit/all): ' .. table.concat(kit_parts, ' | '))
     end
+    if active_overlay then
+        msg_info('Active character overlay: ' .. active_overlay)
+    end
 end
 
 windower.register_event('load', function()
     build_static_indexes()
+    load_layout()
+end)
+
+windower.register_event('login', function()
     load_layout()
 end)
 
@@ -995,7 +1058,11 @@ windower.register_event('addon command', function(...)
         return
     elseif cmd == 'reload' or cmd == 'r' then
         if load_layout() then
-            msg_info('Reloaded data/bags.txt cleanly.')
+            if active_overlay then
+                msg_info('Reloaded data/bags.txt + ' .. active_overlay .. ' cleanly.')
+            else
+                msg_info('Reloaded data/bags.txt cleanly.')
+            end
         end
         return
     elseif cmd == 'list' or cmd == 'groups' then

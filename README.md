@@ -151,6 +151,15 @@ sendaga 0.2 @all cleanuplight go;
 - **Phase 2 (Dump)** runs second on characters matching `dump:`, pulling those mats from storage bags into main Inventory.
 - Characters not matched by `hoard:` or `dump:` skip the kit cleanly.
 
+### 4. Optional Per-Character Bag File (`data/<CharacterName>.txt`)
+If one character organizes specific items differently than your shared `data/bags.txt`, drop an optional `data/<CharacterName>.txt` (or `data/<CharacterName>_bags.txt`) in `data/`. CleanUpLight loads `data/bags.txt` first and layers your character's file on top automatically on load/login:
+
+```ini
+# data/Character2.txt — overrides just the items that differ on Character2
+[CASE]
+Warp Ring
+```
+
 ---
 
 ## More Details

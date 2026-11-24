@@ -18,6 +18,8 @@
 #   - Lines starting with `#` or `//` are comments.
 #   - Wildcards (`*` and `?`) are supported and expanded once at load for O(1) speed.
 #   - Wardrobe sections automatically filter to equippable items only.
+#   - Optional per-character overlay: create `data/<CharacterName>.txt` (or `<CharacterName>_bags.txt`)
+#     to override specific items/bags for that character on top of `data/bags.txt`.
 
 [SETTINGS]
 move_delay = 0.05
