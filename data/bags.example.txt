@@ -3,15 +3,15 @@
 # Structure:
 #   [SATCHEL] / [SACK] / [CASE] / [WARDROBE1-8] / [SAFE] / [STORAGE] / [LOCKER]
 #       Items under a bag header are stowed automatically on `//cul go` and `//cul all`.
-#       Use `@name` headers inside a bag to organize chunks you can also call individually.
+#       Use `@name` headers inside a bag to organize chunks you can also call individually,
+#       or assign optional per-character `hoard:` / `dump:` roles on any `@chunk`:
+#           hoard: Character1              (character-specific hoarding: stows to this bag on `go`; also accepts `horde:`)
+#           dump:  Character2, Character3  (anti-hoarding — NEVER drops/deletes! Pulls out of storage into Inventory to trade; also supports `others`)
 #
 #   [KIT:name -> bag]
-#       Experimental summonable sets (e.g., `abby` for Abyssea weapons) and role-based sets.
-#       - Toggle with `//cul kit <name>` (any in Inventory -> put back away; none -> summon to Inventory).
-#       - Optional per-character roles (evaluated locally by each character on `//cul go`):
-#           hoard: Character1              (character-specific hoarding: stows into the kit's bag during `go`; also accepts `horde:`)
-#           dump:  Character2, Character3  (anti-hoarding — NEVER drops/deletes! Pulls out of storage into Inventory to trade; also supports `others`)
-#       - Kits without `hoard:`/`dump:` are skipped by `go`, toggled by `kit`, and stowed by `all`.
+#       Experimental summonable sets (e.g., `abby` for Abyssea weapons).
+#       - Skipped by `//cul go`, toggled by `//cul kit <name>` (any in Inventory -> put back; none -> pull out),
+#         and stowed on `//cul all`.
 #
 # Notes:
 #   - One item name per line (no quotes or commas needed).
@@ -121,18 +121,9 @@ Shard of Mercy
 Alabaster Matter
 Murky Matter
 
-[KIT:abby -> sack]
-Irradiance Blade
-Iapetus
-Hoe
-Lady Bell
-Fermion Sword
-Blurred Knife +1
-Bloodrain Strap
-# Mercurial Pole
-
-[KIT:upgrade -> sack]
-# Example multi-box roles — replace with your character names (or comment out for manual/kit-only):
+[SACK]
+@upgrade
+# Example multi-box roles — uncomment & replace with your character names:
 # hoard: Character3
 # dump: Character1, Character2
 Beitetsu Box
@@ -148,8 +139,8 @@ Riftdross
 Riftcinder
 Heavy Metal
 
-[KIT:limbus_mats -> sack]
-# Example multi-box roles — replace with your character names (or use `dump: others`):
+@limbus_mats
+# Example multi-box roles — uncomment & replace with your character names (or use `dump: others`):
 # hoard: Character2
 # dump: Character1, Character3
 Tellurium Ingot
@@ -170,8 +161,8 @@ Murky Part III
 Murky Part IV
 Murky Core
 
-[KIT:ambuscade -> sack]
-# Sellable Ambuscade rewards (excluding items already listed in `upgrade`)
+@ambuscade
+# Sellable Ambuscade rewards (excluding items already listed in `@upgrade`)
 # hoard: Character3
 # dump: Character1, Character2
 Alexandrite
@@ -184,3 +175,13 @@ M. Silverpiece
 100 Byne Bill
 Umbral Marrow
 Mulcibar's Scoria
+
+[KIT:abby -> sack]
+Irradiance Blade
+Iapetus
+Hoe
+Lady Bell
+Fermion Sword
+Blurred Knife +1
+Bloodrain Strap
+# Mercurial Pole

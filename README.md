@@ -112,13 +112,14 @@ Bloodrain Strap
 - Kits without `hoard:` / `dump:` are skipped by `//cul go`, toggled by `//cul kit <name>`, and stowed by `//cul all`.
 
 ### 3. Character-Specific `hoard:` and `dump:` (Multi-Box Anti-Hoarding)
-Inside any `[KIT:name -> bag]`, you can optionally assign character-specific roles evaluated locally by each character during `//cul go`:
+Inside any `@chunk` under a `[BAG]` section (e.g., `[SACK]`), you can optionally assign character-specific roles evaluated locally by each character during `//cul go`:
 
-- **`hoard:`** *(also accepts `horde:`)* — **character-specific hoarding**. Characters listed here stow those items from Inventory into the kit's bag (`sack`, `case`, etc.).
+- **`hoard:`** *(also accepts `horde:`)* — **character-specific hoarding**. Characters listed here stow those items from Inventory into that section's bag (`sack`, `case`, etc.).
 - **`dump:`** — **character-specific anti-hoarding (NOT dropping, deleting, or selling!)**. `dump:` **never destroys or NPCs items** — it simply pulls those items *out* of storage bags into **main Inventory** so that character stops hoarding them and has them ready to trade/hand off to whoever is hoarding them.
 
 ```ini
-[KIT:upgrade -> sack]
+[SACK]
+@upgrade
 hoard: Character3
 dump: Character1, Character2
 Beitetsu Box
@@ -132,7 +133,7 @@ Riftdross
 Riftcinder
 Heavy Metal
 
-[KIT:limbus_mats -> sack]
+@limbus_mats
 hoard: Character2
 dump: Character1, Character3   # or `dump: others` to apply to everyone not in `hoard:`
 Tellurium Ingot

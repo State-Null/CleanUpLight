@@ -19,7 +19,7 @@ Design principles:
 
 _addon.name = 'CleanUpLight'
 _addon.author = 'State-Null'
-_addon.version = '1.2.1'
+_addon.version = '1.2.2'
 _addon.commands = {'cleanuplight', 'cul', 'cleanup'}
 
 local res = require('resources')
@@ -64,6 +64,7 @@ local kits = {}
 local auto_map = {}
 local all_map = {}
 local bag_maps = {}
+local overlay_bag_overrides = {}
 local active_overlay = nil
 
 -- FIFO command queue (prevents races when multiple `send` commands arrive back-to-back)
@@ -410,7 +411,7 @@ local function parse_layout_file(f, file_label, is_overlay, state)
                     warnings[#warnings + 1] = ('%s line %d: "%s" must be inside a [BAG] section'):format(file_label, line_no, line)
                 end
 
-            elseif mode == 'kit' and cur_chunk and line:match('^[%a_]+%s*:') then
+            elseif (mode == 'bag' or mode == 'kit') and cur_chunk and line:match('^[%a_]+%s*:') then
                 local directive, val = line:match('^([%a_]+)%s*:%s*(.-)$')
                 local dlow = directive and directive:lower()
                 if dlow == 'hoard' or dlow == 'horde' then
@@ -429,7 +430,12 @@ local function parse_layout_file(f, file_label, is_overlay, state)
                                 cur_chunk.id_set[item_id] = true
                                 cur_chunk.ordered_ids[#cur_chunk.ordered_ids + 1] = item_id
                             end
-                            if cur_bag_id and (is_overlay or not new_all_map[item_id]) then
+                            if mode == 'bag' and cur_bag_id then
+                                assign_bag_item(item_id, cur_bag_id)
+                                if is_overlay then
+                                    state.overlay_bag_overrides[item_id] = cur_bag_id
+                                end
+                            elseif cur_bag_id and (is_overlay or not new_all_map[item_id]) then
                                 new_all_map[item_id] = cur_bag_id
                             end
                         end
@@ -457,6 +463,9 @@ local function parse_layout_file(f, file_label, is_overlay, state)
 
                             if mode == 'bag' and cur_bag_id then
                                 assign_bag_item(item_id, cur_bag_id)
+                                if is_overlay then
+                                    state.overlay_bag_overrides[item_id] = cur_bag_id
+                                end
                             elseif mode == 'kit' and cur_bag_id then
                                 if is_overlay or not new_all_map[item_id] then
                                     new_all_map[item_id] = cur_bag_id
@@ -514,6 +523,7 @@ local function load_layout()
         auto_map = {},
         all_map = {},
         bag_maps = {},
+        overlay_bag_overrides = {},
         unknown_items = {},
         warnings = {},
     }
@@ -535,6 +545,7 @@ local function load_layout()
     auto_map = state.auto_map
     all_map = state.all_map
     bag_maps = state.bag_maps
+    overlay_bag_overrides = state.overlay_bag_overrides
     active_overlay = overlay_rel
 
     for _, w in ipairs(state.warnings) do
@@ -746,6 +757,45 @@ local function make_chunk_put_map(chunk, override_bag_id)
     return m, dst
 end
 
+-- Compute the active character's `go` plan dynamically from chunk definitions + roles
+local function build_go_plan(player_low)
+    local stow_map = {}
+    local dump_set = {}
+    local has_dump = false
+
+    for _, key in ipairs(chunk_order) do
+        local c = chunks[key]
+        local role_scoped = has_role(c.hoard) or has_role(c.dump)
+
+        if role_scoped then
+            if c.bag and player_matches_hoard(c, player_low) then
+                for _, id in ipairs(c.ordered_ids) do
+                    stow_map[id] = c.bag
+                    dump_set[id] = nil
+                end
+            elseif player_matches_dump(c, player_low) then
+                for _, id in ipairs(c.ordered_ids) do
+                    stow_map[id] = nil
+                    dump_set[id] = true
+                    has_dump = true
+                end
+            end
+        elseif not c.is_kit and c.bag then
+            for _, id in ipairs(c.ordered_ids) do
+                stow_map[id] = c.bag
+            end
+        end
+    end
+
+    -- Apply explicit per-character overlay bag reassignments last so they always win
+    for item_id, bag_id in pairs(overlay_bag_overrides) do
+        stow_map[item_id] = bag_id
+        dump_set[item_id] = nil
+    end
+
+    return stow_map, dump_set, has_dump
+end
+
 -- Execute a queued job inside the worker coroutine
 local function execute_job(job)
     local info = windower.ffxi.get_info()
@@ -755,33 +805,12 @@ local function execute_job(job)
 
     if job.mode == 'go' then
         local player_low = get_current_player_lower()
-        local stow_map = {}
-        for item_id, bag_id in pairs(auto_map) do
-            stow_map[item_id] = bag_id
-        end
+        local stow_map, dump_set, has_dump = build_go_plan(player_low)
 
-        local dump_set = {}
-        local has_dump = false
-
-        for _, kit in ipairs(kits) do
-            if kit.bag and player_matches_hoard(kit, player_low) then
-                for _, id in ipairs(kit.ordered_ids) do
-                    stow_map[id] = kit.bag
-                end
-            elseif player_matches_dump(kit, player_low) then
-                for _, id in ipairs(kit.ordered_ids) do
-                    -- Never stow an item that this character is configured to dump
-                    stow_map[id] = nil
-                    dump_set[id] = true
-                    has_dump = true
-                end
-            end
-        end
-
-        -- Phase 1: Stow normal bags + this character's `hoard:` kits (frees Inventory slots first)
+        -- Phase 1: Stow normal bags + this character's `hoard:` chunks/kits (frees Inventory slots first)
         local moved1 = run_pass('put', stow_map, nil, 'go (stow)', job.dry)
 
-        -- Phase 2: Pull this character's `dump:` kits into Inventory
+        -- Phase 2: Pull this character's `dump:` chunks/kits into Inventory
         local moved2 = 0
         if has_dump then
             if moved1 > 0 and not job.dry then
@@ -794,6 +823,17 @@ local function execute_job(job)
         end
 
         return moved1 + moved2
+
+    elseif job.mode == 'bag_sweep' then
+        local player_low = get_current_player_lower()
+        local stow_map = build_go_plan(player_low)
+        local filtered = {}
+        for item_id, bag_id in pairs(stow_map) do
+            if bag_id == job.bag_id then
+                filtered[item_id] = bag_id
+            end
+        end
+        return run_pass('put', filtered, nil, job.label, job.dry)
 
     elseif job.mode == 'kit_toggle' then
         local kit = job.kit
@@ -955,12 +995,12 @@ local function parse_and_enqueue(args, dry)
         return
     end
 
-    -- Configured [BAG] shortcut (e.g., `//cleanup satchel`, `//cleanup case`)
+    -- Configured [BAG] shortcut (e.g., `//cul satchel`, `//cul case`, `//cul sack`)
     local bag_id = resolve_bag(cmd)
     if bag_id and bag_maps[bag_id] then
         enqueue_job({
-            mode = 'put',
-            item_map_or_set = bag_maps[bag_id],
+            mode = 'bag_sweep',
+            bag_id = bag_id,
             label = bag_id_to_name[bag_id] or cmd,
             dry = dry,
         })
@@ -1014,18 +1054,19 @@ local function show_list()
     for _, key in ipairs(chunk_order) do
         local c = chunks[key]
         local bname = c.bag and bag_id_to_name[c.bag] or 'none'
+        local role = ''
+        if player_matches_hoard(c, player_low) then
+            role = ', YOU:hoard'
+        elseif player_matches_dump(c, player_low) then
+            role = ', YOU:dump'
+        elseif has_role(c.hoard) or has_role(c.dump) then
+            role = ', YOU:skip'
+        end
+        local entry = ('%s (%d -> %s%s)'):format(c.name, #c.ordered_ids, bname, role)
         if c.is_kit then
-            local role = ''
-            if player_matches_hoard(c, player_low) then
-                role = ', YOU:hoard'
-            elseif player_matches_dump(c, player_low) then
-                role = ', YOU:dump'
-            elseif has_role(c.hoard) or has_role(c.dump) then
-                role = ', YOU:skip'
-            end
-            kit_parts[#kit_parts + 1] = ('%s (%d -> %s%s)'):format(c.name, #c.ordered_ids, bname, role)
+            kit_parts[#kit_parts + 1] = entry
         else
-            normal_parts[#normal_parts + 1] = ('%s (%d -> %s)'):format(c.name, #c.ordered_ids, bname)
+            normal_parts[#normal_parts + 1] = entry
         end
     end
 
